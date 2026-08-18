@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import UpdateForm from "../UpdateForm";
 import { createUpdate } from "@/lib/api";
 
@@ -254,5 +255,89 @@ describe("keyboard shortcut", () => {
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
 
     await waitFor(() => expect(onPosted).toHaveBeenCalled());
+  });
+});
+
+describe("UpdateForm tag input accessibility", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("labels the tag input rather than relying on the placeholder", () => {
+    render(<UpdateForm auth={auth} />);
+
+    // getByLabelText only resolves through a real accessible name, so this
+    // fails if the <label>/htmlFor association is dropped.
+    expect(screen.getByLabelText("Tags")).toBe(
+      document.querySelector("#tag-input"),
+    );
+  });
+
+  it("lets a keyboard user add and then remove a tag", async () => {
+    const user = userEvent.setup();
+    render(<UpdateForm auth={auth} />);
+
+    const tagInput = screen.getByLabelText("Tags");
+    fireEvent.change(tagInput, { target: { value: "release" } });
+    fireEvent.keyDown(tagInput, { key: "Enter", code: "Enter" });
+
+    expect(screen.getByText("release")).toBeInTheDocument();
+
+    // The remove control must be a real button, reachable by name and
+    // operable without a mouse.
+    const removeButton = screen.getByRole("button", {
+      name: "Remove tag release",
+    });
+    expect(removeButton).toHaveAttribute("type", "button");
+
+    removeButton.focus();
+    expect(removeButton).toHaveFocus();
+
+    // Press Enter on the focused control rather than clicking it. This has to
+    // go through user-event: raw fireEvent.keyDown/keyUp does not remove the
+    // tag, because jsdom does not implement the *activation behaviour* that
+    // turns Enter/Space on a focused <button> into a click -- it only
+    // dispatches the key events. user-event models that browser step, so the
+    // assertion below is a real statement about keyboard operability.
+    //
+    // It also means the test fails if the control regresses to a <div
+    // onClick> or an <a> without href: fireEvent.click would still pass on
+    // either, which is what made the earlier version of this test vacuous.
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByText("release")).not.toBeInTheDocument();
+  });
+
+  it("removes a tag when the focused remove button is activated with Space", async () => {
+    const user = userEvent.setup();
+    render(<UpdateForm auth={auth} />);
+
+    const tagInput = screen.getByLabelText("Tags");
+    fireEvent.change(tagInput, { target: { value: "docs" } });
+    fireEvent.keyDown(tagInput, { key: "Enter", code: "Enter" });
+
+    const removeButton = screen.getByRole("button", { name: "Remove tag docs" });
+    removeButton.focus();
+
+    // Space is the other activation key a button must answer, and it fires on
+    // key *up* rather than key down.
+    await user.keyboard("[Space]");
+
+    expect(screen.queryByText("docs")).not.toBeInTheDocument();
+  });
+
+  it("does not submit the form when a tag is removed", async () => {
+    render(<UpdateForm auth={auth} />);
+
+    const tagInput = screen.getByLabelText("Tags");
+    fireEvent.change(tagInput, { target: { value: "release" } });
+    fireEvent.keyDown(tagInput, { key: "Enter", code: "Enter" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove tag release" }));
+
+    // A <button> inside a <form> defaults to type="submit"; without the
+    // explicit type this click would post an update.
+    await waitFor(() => expect(createUpdate).not.toHaveBeenCalled());
   });
 });
