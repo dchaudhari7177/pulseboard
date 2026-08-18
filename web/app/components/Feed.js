@@ -5,6 +5,7 @@ import { listUpdates } from "@/lib/api";
 import UpdateCard from "./UpdateCard";
 
 const STATUS_OPTIONS = ["on-track", "blocked", "done"];
+const DEFAULT_SORT_ORDER = "newest";
 
 export default function Feed({ auth, refreshToken, socket }) {
   const [updates, setUpdates] = useState([]);
@@ -13,7 +14,7 @@ export default function Feed({ auth, refreshToken, socket }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [authorFilter, setAuthorFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
-  const [sortOrder, setSortOrder] = useState("newest");
+  const [sortOrder, setSortOrder] = useState(DEFAULT_SORT_ORDER);
 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -258,6 +259,23 @@ export default function Feed({ auth, refreshToken, socket }) {
     });
   }
 
+  // Every filter differs from its default, or none do -- the control is
+  // disabled in the second case so it never looks actionable when it is not.
+  const hasActiveFilters =
+    statusFilter !== "" ||
+    authorFilter !== "" ||
+    tagFilter !== "" ||
+    sortOrder !== DEFAULT_SORT_ORDER ||
+    showMyUpdates;
+
+  function clearFilters() {
+    setStatusFilter("");
+    setAuthorFilter("");
+    setTagFilter("");
+    setSortOrder(DEFAULT_SORT_ORDER);
+    setShowMyUpdates(false);
+  }
+
   function handleShowMyUpdates() {
     try {
       setShowMyUpdates(!showMyUpdates);
@@ -339,6 +357,19 @@ export default function Feed({ auth, refreshToken, socket }) {
         <button type="button" onClick={handleRefresh} disabled={refreshing}>
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
+
+        {/* "Clear all filters", not "Clear filters": the empty state below
+            keeps its own "Clear filters" button, and two buttons sharing one
+            accessible name in the same view is exactly what a screen-reader
+            user cannot disambiguate. The wording is the one in #153's title. */}
+        <button
+          type="button"
+          className="clear-filters"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+        >
+          Clear all filters
+        </button>
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -367,15 +398,7 @@ export default function Feed({ auth, refreshToken, socket }) {
                 .join(", ")}
             </p>
 
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("");
-                setAuthorFilter("");
-                setTagFilter("");
-                setShowMyUpdates(false);
-              }}
-            >
+            <button type="button" onClick={clearFilters}>
               Clear filters
             </button>
           </div>
